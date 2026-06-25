@@ -1,0 +1,19 @@
+* text=auto
+*.gd text eol=lf
+*.tscn text eol=lf
+*.godot text eol=lf
+*.import text eol=lf
+*.uid text eol=lf
+*.gani text eol=lf
+*.nw text eol=lf
+*.gmap text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.svg text eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.wav binary
+*.mp3 binary
+*.ogg binary
