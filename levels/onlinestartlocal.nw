@@ -21,9 +21,9 @@ BOARD 0 18 64 0 ACADAAABf/f/f/f/f/f/f/f/f/f/AAABf/f/f/f/f/f/f/f/AAABf/f/AAABf/f/
 BOARD 0 19 64 0 ASATf/f/AQf/AAABf/KpKqf/f/f/f/f/f/f/AAABf/f/f/AAABf/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/AAABf/f/f/f/f/f//I/Jf/f/f/K5K6f/f/f/f/f/f/f/f/
 BOARD 0 20 64 0 f/f/f/f/f/f/f/AAABK5K6f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/ARBgARf/f/f/f/AAABf/f/
 BOARD 0 21 64 0 AAABf/f/f/f/f/f/ARBgARf/f/K3f/AAABf/f/f/f/f/f/f/f/f/f/f/f/f/AAABf/f/f/f/f/AAABf/f/f/f/f/OLf/f/f/f/f/f/f/f/AhBwAhARAQf/AAABf/f/AA
-BOARD 0 22 64 0 AQf/f/f/f/f/f/ARAhBwAhf/f/f/f/f/AAABf/f/f/f/AAABf/f/f/f/f/f/f/f/f/K3f/f/f/f/f/f/f/f/f/f/f/f/f/f/AAABf/f/f/f/f/f/AhARf/f/f/f/f/f/
-BOARD 0 23 64 0 f/f/f/AAABf/ARAhf/f/f/f/f/f/f/f/f/f/f/Knf/f/f/f/f/AAABf/f/f/f/f/f/f/f/f/f/f/f/f/Knf/f/f/f/f/f/AAABf/f/f/f/f/f/f/f/AgKpKqf/f/f/f/
-BOARD 0 24 64 0 f/f/f/f/KpKqAgf/f/f/AAABf/f/f/f/K4f/f/f/f/f/f/f/f/f/f/f/f/f/AAABf/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/AAABf/ARK5K6AAABf/f/
+BOARD 0 22 64 0 AQf/f/f/f/f/f/ARAhBwAhf/f/f/f/f/AAABf/f/f/f/AAABf/f/f/f/f/f/f/f/f/K3f/f/f/f/f/f/f/f/f/f/f/f/f/f/AAABf/f/f/f/KsKtAhARf/f/f/f/f/f/
+BOARD 0 23 64 0 f/f/f/AAABf/ARAhf/KsKtf/f/f/f/f/f/f/f/Knf/f/f/f/f/AAABf/f/f/f/f/f/f/f/f/f/f/f/f/Knf/f/f/f/f/f/AAABf/f/f/f/f/K8K9f/AgKpKqf/f/f/f/
+BOARD 0 24 64 0 f/f/f/f/KpKqAgf/f/K8K9ABf/f/f/f/K4f/f/f/f/f/f/f/f/f/f/f/f/f/AAABf/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/AAABf/ARK5K6AAABf/f/
 BOARD 0 25 64 0 f/f/f/f/K5K6ARf/f/f/f/f/AwAxAwAxf/f/f/AwAxAwAxAwAxf/f/f/f/AwAxAwAxAwAxAAABf/AwAxAwAxAwAxf/f/f/AwAxf/f/f/f/f/f/f/f/Ahf/f/f/f/f/f/
 BOARD 0 26 64 0 f/f/f/f/f/f/Ahf/f/f/AwAxAwAxAwAxAwAxf/AwAxAwAxAwAxAwAxf/f/AwAxAwAxAwAxf/f/f/AwAxAwAxAwAxAAABf/AwAxf/f/Knf/f/f/f/f/AAABf/f/f/f/f/
 BOARD 0 27 64 0 AAABf/f/f/f/f/f/AAABAwAxf/f/f/f/AwAxf/AwAxf/OLf/K3AwAxf/AwAxf/f/AAABAwAxf/AwAxf/f/f/f/AwAxAAABAwAxf/f/f/f/f/f/K4f/f/f/f/f/f/AQf/
@@ -38,8 +38,8 @@ BOARD 0 35 64 0 f/f/f/f/AAABf/AAABAwAxf/f/f/f/f/AwAxf/AwAxf/Knf/f/AwAxf/AwAxK4f/
 BOARD 0 36 64 0 f/f/f/f/f/f/K4f/AAABAwAxf/K4AAABAwAxf/AwAxf/f/f/f/AwAxf/AwAxf/f/f/f/AwAxf/AwAxf/f/f/f/AwAxf/f/AwAxf/f/f/f/f/f/f/f/AAABf/f/f/AAAB
 BOARD 0 37 64 0 f/AQf/f/f/f/ARf/f/f/AwAxAwAxAwAxAwAxf/AwAxf/f/f/K4AwAxf/AwAxAAABf/K3AwAxf/AwAxK3f/AAABAwAxf/f/AwAxAwAxAwAxAwAxf/f/ARf/f/f/AAABAQ
 BOARD 0 38 64 0 AAABf/f/KpKqAgAAABf/K3f/AwAxAwAxf/f/f/AwAxf/f/f/f/AwAxf/AwAxf/f/f/f/AwAxf/AwAxf/f/f/f/AwAxf/f/AwAxAwAxAwAxAwAxf/f/AgKpKqf/f/f/f/
-BOARD 0 39 64 0 f/f/f/f/K5K6ARf/f/f/f/f/f/f/f/AAABf/f/f/f/f/f/f/f/f/f/f/f/f/f/Knf/f/f/f/f/f/f/f/f/f/f/f/f/f/AAABf/f/f/f/f/f/f/f/f/ARK5K6f/f/f/f/
-BOARD 0 40 64 0 f/f/f/AAABf/AhARf/f/f/Knf/f/f/f/f/f/f/AAABf/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/AAABf/f/f/K3f/f/f/f/f/f/f/f/f/f/f/f/f/ARAhf/f/f/f/f/f/
+BOARD 0 39 64 0 f/f/f/f/K5K6ARf/f/f/f/f/f/f/f/AAABf/f/f/f/f/f/f/f/f/f/f/f/f/f/Knf/f/f/f/f/f/f/f/f/f/f/f/f/f/AAABf/f/f/f/f/f/KsKtf/ARK5K6f/f/f/f/
+BOARD 0 40 64 0 f/f/f/AAABf/AhARf/f/f/Knf/f/f/f/f/f/f/AAABf/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/AAABf/f/f/K3f/f/f/f/f/f/f/f/f/f/f/K8K9ARAhf/f/f/f/f/f/
 BOARD 0 41 64 0 f/f/f/f/f/f/f/AhARBgARf/f/OLf/f/f/f/AAABf/f/f/AAABf/f/K4f/f/AAABf/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/OLf/f/AAABARBgARAhAAABf/f/f/f/f/
 BOARD 0 42 64 0 f/f/f/f/f/AQf/f/AhBwAhABf/f/f/K4f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/OLf/f/f/f/f/f/AAABf/f/f/f/f/f/f/f/f/f/AhBwAhf/f/AAABf/f/f/f/
 BOARD 0 43 64 0 AAABf/f/AAABf/f/f/KpKqAAABf/f/f/f/f/f/AAABf/f/f/f/AAABf/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/AQKpKqf/f/f/f/AQf/f/f/
@@ -63,51 +63,5 @@ BOARD 0 60 64 0 FDFEFCFCFCFCHlHmFCFCFCFCFCHVHWFCFCFCFCHVHWFCFCFCFCH6GOGOGOHIFCFC
 BOARD 0 61 64 0 FCFCFCFCFCFCFDFEFCFCFCFCFCHlHmFCFCFCFCHlHmFCFCFCFCFCFCFCFCFCFCFCFCFCFCFCFCFCHVHWFCFCFC4c484dFCFCHlHmFCFCFCFCFCFCFCFCFCHVHWFCFCHl
 BOARD 0 62 64 0 FCFCFCFSFCFC4c4848484dFCFCFCFCFSFCFCFDFEFCHVHWFCFCFDFEFCFCFCFCFCFCFCFCFCFCFSHlHmFCFC4c484848FCFCFCFDFEHVHWFCFCFSFCHVHWHlHmFCFCFS
 BOARD 0 63 64 0 FCHVHWFCFC4c4848484848484dFCFCFCFCFCFCFCFCHlHmFCFCFCFCFCFCFCFCFCFDFEFCFCFCFCFCFS4c48484848484dFCFCFCFCHlHmFCFCFCFCHlHmFDFEFCFCFC
-
-CHEST 23 19 greenrupee 0
-CHEST 31 21 spinattack 0
-CHEST 20 27 fullheart 0
-NPC chest.png 22 39
-function onCreated() setshape(1, 32, 32);
-function onActionTest() {
-   chat = "woah calm down" SPC player.account;
-   echo("woah");
-}
-NPCEND
-
-NPC block.png 31 30
-chat = "click test";
-
-function onActionLeftMouse() {
-   chat = player.account SPC "clicked me last";
-}
-NPCEND
-
-NPC block.png 31 38
-chat = "touch test";
-
-function onPlayerTouchsMe() {
-   chat = player.account SPC "touched me last";
-}
-NPCEND
-
-NPC - 38 30
-// NPC Created by Stefan Knorr
-function onCreated() {
-    // Initialize the attributes
-    showcharacter();
-    this.nick = "Bob";
-    this.headimg = "head0.png";
-    this.shieldimg = "shield1.png";
-    this.bodyimg = "body.png";
-    this.colors[0] = "orange";
-    this.colors[1] = "white";
-    this.colors[2] = "blue";
-    this.colors[3] = "red";
-    this.colors[4] = "black";
-    shieldpower = 1;
-    this.dir = 2;
-}
-NPCEND
 
 TILESET pics1.png

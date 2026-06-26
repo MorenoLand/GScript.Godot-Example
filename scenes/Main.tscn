@@ -1,4 +1,4 @@
-[gd_scene load_steps=4 format=3 uid="uid://bwr85vlf2lw8n"]
+[gd_scene format=3 uid="uid://bwr85vlf2lw8n"]
 
 [ext_resource type="Script" uid="uid://cf8rhl6eecenk" path="res://scripts/TPlayer.gd" id="1_tplayer"]
 [ext_resource type="Script" uid="uid://7kaprino2klw" path="res://scripts/TLevel.gd" id="2_tlevel"]
@@ -11,12 +11,15 @@ size = Vector2(31, 30)
 [node name="TLevel" type="Node2D" parent="." unique_id=863337196]
 texture_filter = 1
 script = ExtResource("2_tlevel")
+sound_dir = null
+bush_land_sound = null
 
 [node name="TPlayer" type="Node2D" parent="." unique_id=1600960476]
 texture_filter = 1
-position = Vector2(480, 480)
+position = Vector2(513, 484)
 script = ExtResource("1_tplayer")
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="TPlayer"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="TPlayer" unique_id=1460698387]
+visible = false
 position = Vector2(-0.5, 12)
 shape = SubResource("RectangleShape2D_player")

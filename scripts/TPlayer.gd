@@ -5,6 +5,19 @@ extends Node2D
 const TGaniScript = preload("res://scripts/TGani.gd")
 const COLLISION_SHAPE_OFFSET := Vector2(-0.5, 12)
 const COLLISION_SHAPE_SIZE := Vector2(31, 30)
+const CORNER_SLIDE_OFFSETS := [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+const CARRY_ITEM_RECTS := {
+	"bush": Rect2i(0, 338, 32, 32),
+	"vase": Rect2i(64, 340, 32, 32),
+	"stone": Rect2i(96, 338, 32, 32),
+	"blackstone": Rect2i(96, 370, 32, 32)
+}
+const HIDABLE_CARRY_TYPES := {"bush": true, "stone": true, "blackstone": true}
+const HIDDEN_WALK_SHAKE := [Vector2(0, 0), Vector2(1, -1), Vector2(0, 0), Vector2(-1, 1)]
+const HIDDEN_SPEED_SCALE := 0.55
+const WALK_STEP_TIME := 0.26
+const HIDDEN_STEP_TIME := 0.30
+const HIDDEN_SHAKE_TIME := 150
 
 @export var resource_dir: String = "res://assets/ganis":
 	set(value):
@@ -28,6 +41,11 @@ const COLLISION_SHAPE_SIZE := Vector2(31, 30)
 @export var attack_animation: String = "attack"
 @export var grab_animation: String = "grab"
 @export var pull_animation: String = "pull"
+@export var lift_animation: String = "lift"
+@export var carry_animation: String = "carry"
+@export var carry_still_animation: String = "carrystill"
+@export var hidden_animation: String = "hidden"
+@export var hidden_still_animation: String = "hiddenstill"
 @export var sit_animation: String = "sit"
 @export var swim_animation: String = "swim"
 
@@ -89,8 +107,17 @@ var active_action := ""
 var animation_cache: Dictionary = {}
 var sound_cache: Dictionary = {}
 var camera: Camera2D
+var carry_item_texture: ImageTexture
+var carry_item_textures: Dictionary = {}
+var carry_item_type := "bush"
 var space_was_down := false
 var grab_was_down := false
+var pickup_was_down := false
+var carrying_object := false
+var hidden_object := false
+var hidden_uses_gani := false
+var hidden_step_timer := 0.0
+var walk_step_timer := 0.0
 var action_direction := 2
 
 const CRGB = [
@@ -154,6 +181,11 @@ func _process(delta: float) -> void:
 		_update_camera_limits()
 	_update_movement(delta)
 	_process_animation(delta)
+	var level = _get_level()
+	if level != null and "thrown_bushes" in level and not level.thrown_bushes.is_empty():
+		queue_redraw()
+	if hidden_object and is_moving:
+		queue_redraw()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if Engine.is_editor_hint() or not camera_enabled:
@@ -197,10 +229,11 @@ func _process_animation(delta: float) -> void:
 		return
 
 	frame_timer_ms += delta * 1000.0
-	if frame_timer_ms < float(frame.get("duration", 50)):
+	var frame_duration := float(frame.get("duration", 50))
+	if frame_timer_ms < frame_duration:
 		return
 
-	frame_timer_ms = 0.0
+	frame_timer_ms -= frame_duration
 	current_frame += 1
 	if current_frame >= current_gani.get_frame_count():
 		if current_gani.is_looped:
@@ -213,11 +246,12 @@ func _process_animation(delta: float) -> void:
 			current_frame = max(0, current_gani.get_frame_count() - 1)
 			if active_action != "grab":
 				active_action = ""
-				_set_animation_if_available(walk_animation if velocity.length_squared() > 1.0 else idle_animation)
+				_set_animation_if_available(_get_idle_animation())
 			return
 		else:
 			current_frame = current_gani.get_frame_count() - 1
-	_play_frame_sounds(current_frame)
+	if not hidden_object and current_animation_name != walk_animation:
+		_play_frame_sounds(current_frame)
 	queue_redraw()
 
 func load_animation(ani_name: String) -> bool:
@@ -237,6 +271,7 @@ func load_animation(ani_name: String) -> bool:
 		body_source_key = str(cached.body_source_key)
 		current_animation_name = ani_name
 		apply_body_colors()
+		_apply_carry_item_texture()
 		_set_status("")
 		queue_redraw()
 		return true
@@ -259,10 +294,13 @@ func load_animation(ani_name: String) -> bool:
 
 	_load_default_textures()
 	_load_custom_textures()
+	_apply_carry_item_texture()
 	apply_body_colors()
+	var cached_textures := texture_cache.duplicate()
+	cached_textures.erase("ATTR3")
 	animation_cache[ani_name] = {
 		"gani": current_gani,
-		"textures": texture_cache.duplicate(),
+		"textures": cached_textures,
 		"body_source_image": body_source_image,
 		"body_source_key": body_source_key
 	}
@@ -273,6 +311,29 @@ func load_animation(ani_name: String) -> bool:
 func setani(ani_name: String) -> bool:
 	return load_animation(ani_name)
 
+func set_gani_param(index: int, value: String) -> void:
+	_set_gani_value("PARAM" + str(index), value)
+
+func set_gani_attr(index: int, value: String) -> void:
+	_set_gani_value("ATTR" + str(index), value)
+
+func _set_gani_value(key: String, value: String) -> void:
+	key = key.to_upper()
+	if current_gani == null:
+		return
+	current_gani.default_images[key] = value
+	if _looks_like_image(value):
+		var img := _load_image(value)
+		if img != null:
+			texture_cache[key] = ImageTexture.create_from_image(img)
+	else:
+		texture_cache.erase(key)
+	queue_redraw()
+
+func _looks_like_image(value: String) -> bool:
+	var lower := value.strip_edges().to_lower()
+	return lower.ends_with(".png") or lower.ends_with(".gif") or lower.ends_with(".jpg") or lower.ends_with(".jpeg") or lower.ends_with(".webp")
+
 func _update_movement(delta: float) -> void:
 	var input := _get_move_input()
 	_update_action_state(input)
@@ -280,14 +341,19 @@ func _update_movement(delta: float) -> void:
 	var tile_type := _get_feet_tile_type()
 	var surface_animation := ""
 	if tile_type == 3:
-		surface_animation = sit_animation
+		if carrying_object:
+			_throw_carried_bush()
+		if not hidden_object:
+			surface_animation = sit_animation
 		speed_scale = 0.3
 	elif tile_type == 8:
 		speed_scale = 0.75
 	elif tile_type == 11:
+		if carrying_object:
+			_throw_carried_bush()
 		surface_animation = swim_animation
 		speed_scale = 0.6
-	if active_action == "attack":
+	if active_action == "attack" or active_action == "lift":
 		input = Vector2.ZERO
 		speed_scale = 0.0
 	elif active_action == "grab":
@@ -298,6 +364,8 @@ func _update_movement(delta: float) -> void:
 			_set_animation_if_available(grab_animation)
 		input = Vector2.ZERO
 		speed_scale = 0.0
+	if hidden_object:
+		speed_scale *= HIDDEN_SPEED_SCALE
 	velocity = input.normalized() * move_speed * speed_scale
 	if velocity != Vector2.ZERO:
 		_move_with_collision(velocity * delta)
@@ -306,32 +374,81 @@ func _update_movement(delta: float) -> void:
 	var moving_now := input != Vector2.ZERO and active_action == ""
 	var wanted_animation := surface_animation
 	if wanted_animation.is_empty():
-		wanted_animation = walk_animation if moving_now else idle_animation
+		if hidden_object:
+			wanted_animation = hidden_animation if moving_now else hidden_still_animation
+		elif carrying_object:
+			wanted_animation = carry_animation if moving_now else carry_still_animation
+		else:
+			wanted_animation = walk_animation if moving_now else idle_animation
 	is_moving = moving_now
 	if active_action == "":
 		_set_animation_if_available(wanted_animation)
+	_update_hidden_steps(delta)
+	_update_walk_steps(delta)
+
+func _update_hidden_steps(delta: float) -> void:
+	if not hidden_object or not is_moving:
+		hidden_step_timer = 0.0
+		return
+	hidden_step_timer += delta
+	if hidden_step_timer >= HIDDEN_STEP_TIME:
+		hidden_step_timer = 0.0
+		_play_sound_file("steps2.wav")
+
+func _update_walk_steps(delta: float) -> void:
+	if hidden_object or carrying_object or not is_moving:
+		walk_step_timer = 0.0
+		return
+	walk_step_timer += delta
+	if walk_step_timer >= WALK_STEP_TIME:
+		walk_step_timer = 0.0
+		_play_sound_file("steps2.wav")
 
 func _update_action_state(_input: Vector2) -> void:
 	var space_down := Input.is_key_pressed(KEY_SPACE)
-	var grab_down := Input.is_key_pressed(KEY_E)
-	if active_action == "attack":
+	var weapon_down := Input.is_key_pressed(KEY_E)
+	var pickup_down := Input.is_key_pressed(KEY_F)
+	if active_action == "attack" or active_action == "lift":
 		space_was_down = space_down
-		grab_was_down = grab_down
+		grab_was_down = weapon_down
+		pickup_was_down = pickup_down
+		return
+	if hidden_object:
+		if weapon_down and not grab_was_down:
+			_unhide_bush()
+		space_was_down = space_down
+		grab_was_down = weapon_down
+		pickup_was_down = pickup_down
 		return
 	if active_action == "grab":
-		if not grab_down:
+		if not pickup_down:
 			active_action = ""
-			_set_animation_if_available(walk_animation if velocity.length_squared() > 1.0 else idle_animation)
+			_set_animation_if_available(_get_idle_animation())
 		space_was_down = space_down
-		grab_was_down = grab_down
+		grab_was_down = weapon_down
+		pickup_was_down = pickup_down
 		return
 	if space_down and not space_was_down:
-		_start_action("attack", attack_animation)
-	elif grab_down and not grab_was_down:
-		action_direction = direction
-		_start_action("grab", grab_animation)
+		if carrying_object:
+			_throw_carried_bush()
+		else:
+			_start_action("attack", attack_animation)
+			_try_slay_bush_ahead()
+	elif weapon_down and not grab_was_down:
+		if carrying_object and HIDABLE_CARRY_TYPES.has(carry_item_type):
+			_hide_with_bush()
+	elif pickup_down and not pickup_was_down:
+		if carrying_object:
+			_throw_carried_bush()
+		elif _try_lift_item_ahead():
+			carrying_object = true
+			_start_action("lift", lift_animation)
+		elif _can_grab_ahead():
+			action_direction = direction
+			_start_action("grab", grab_animation)
 	space_was_down = space_down
-	grab_was_down = grab_down
+	grab_was_down = weapon_down
+	pickup_was_down = pickup_down
 
 func _start_action(action: String, anim: String) -> void:
 	active_action = action
@@ -341,19 +458,127 @@ func _start_action(action: String, anim: String) -> void:
 	if _set_animation_if_available(anim):
 		_play_frame_sounds(current_frame)
 
+func _get_idle_animation() -> String:
+	if hidden_object:
+		return hidden_still_animation
+	return carry_still_animation if carrying_object else idle_animation
+
+func _try_slay_bush_ahead() -> bool:
+	var level = _get_level()
+	if level == null or not level.has_method("try_slay_bush"):
+		return false
+	for point in _get_facing_action_points():
+		if level.try_slay_bush(point):
+			return true
+	return false
+
+func _try_lift_item_ahead() -> bool:
+	var level = _get_level()
+	if level == null or not level.has_method("try_lift_bush"):
+		return false
+	for point in _get_facing_action_points():
+		var item_type := str(level.try_lift_bush(point))
+		if not item_type.is_empty():
+			_set_carry_item_type(item_type)
+			return true
+	return false
+
+func _throw_carried_bush() -> void:
+	var thrown_type := carry_item_type
+	var level = _get_level()
+	if level != null and level.has_method("throw_bush"):
+		level.throw_bush(position + Vector2(0, -9), direction, thrown_type)
+	carrying_object = false
+	hidden_object = false
+	active_action = ""
+	carry_item_type = "bush"
+	_set_carry_item_type(carry_item_type)
+	_set_animation_if_available(idle_animation)
+
+func _hide_with_bush() -> void:
+	carrying_object = false
+	hidden_object = true
+	active_action = ""
+	hidden_uses_gani = _set_animation_if_available(hidden_still_animation)
+	_play_sound_file("crush.wav")
+	queue_redraw()
+
+func _unhide_bush() -> void:
+	hidden_object = false
+	hidden_uses_gani = false
+	carrying_object = true
+	_set_carry_item_type(carry_item_type)
+	active_action = ""
+	_set_animation_if_available(carry_still_animation)
+	_play_sound_file("crush.wav")
+	queue_redraw()
+
+func _can_grab_ahead() -> bool:
+	var level = _get_level()
+	if level == null or not level.has_method("has_grab_target"):
+		return false
+	for point in _get_facing_action_points():
+		if level.has_grab_target(point):
+			return true
+	return false
+
+func _get_facing_action_points() -> Array[Vector2]:
+	var facing := _direction_vector(direction)
+	var side := Vector2(-facing.y, facing.x)
+	var base := position + Vector2(0, 10) + facing * 22.0
+	return [base, base + side * 7.0, base - side * 7.0]
+
+func _get_level():
+	var levels := get_tree().get_nodes_in_group("level")
+	return null if levels.is_empty() else levels[0]
+
 func _move_with_collision(motion: Vector2) -> void:
 	if motion.x != 0.0:
-		var next := position + Vector2(motion.x, 0.0)
+		var step := Vector2(motion.x, 0.0)
+		var next := position + step
 		if _can_stand_at(next):
+			if _try_corner_slide(step, true, velocity):
+				return
 			position = next
-		else:
+		elif not _try_corner_slide(step):
 			velocity.x = 0.0
 	if motion.y != 0.0:
-		var next := position + Vector2(0.0, motion.y)
+		var step := Vector2(0.0, motion.y)
+		var next := position + step
 		if _can_stand_at(next):
+			if _try_corner_slide(step, true, velocity):
+				return
 			position = next
-		else:
+		elif not _try_corner_slide(step):
 			velocity.y = 0.0
+
+func _try_corner_slide(step: Vector2, proactive: bool = false, wanted: Vector2 = Vector2.ZERO) -> bool:
+	var side := Vector2(-sign(step.y), sign(step.x))
+	if side == Vector2.ZERO:
+		return false
+	var step_dir: Vector2 = step.normalized()
+	var probe: Vector2 = step_dir * max(step.length() + 9.0, 9.0)
+	if proactive and _can_stand_at(position + probe):
+		return false
+	var dirs: Array[float] = [-1.0, 1.0]
+	var side_dot: float = wanted.dot(side)
+	if proactive and abs(side_dot) < 0.01:
+		return false
+	if side_dot > 0.0:
+		dirs = [1.0, -1.0]
+	for amount: float in CORNER_SLIDE_OFFSETS:
+		for dir: float in dirs:
+			var offset: Vector2 = side * amount * dir
+			if _can_stand_at(position + offset) and _can_stand_at(position + offset + step):
+				position += offset + step
+				return true
+			if proactive and _can_stand_at(position + offset) and _can_stand_at(position + offset + probe):
+				position += offset
+				return true
+			if _can_stand_at(position + offset) and _can_stand_at(position + offset + step_dir * (amount + step.length())):
+				position += offset
+				return true
+	return false
 
 func _can_stand_at(pos: Vector2) -> bool:
 	var levels := get_tree().get_nodes_in_group("level")
@@ -454,7 +679,7 @@ func _load_default_textures() -> void:
 		return
 
 	for slot in current_gani.default_images.keys():
-		var image_name := str(current_gani.default_images[slot])
+		var image_name := str(current_gani.default_images[slot]).strip_edges()
 		if image_name.is_empty():
 			continue
 
@@ -476,7 +701,7 @@ func _load_custom_textures() -> void:
 		if str(sprite.get("type", "")) != "CUSTOM":
 			continue
 
-		var image_name := str(sprite.get("custom_image", ""))
+		var image_name := str(sprite.get("custom_image", "")).strip_edges()
 		if image_name.is_empty():
 			continue
 
@@ -484,10 +709,43 @@ func _load_custom_textures() -> void:
 		if img != null:
 			texture_cache[str(sprite_id)] = ImageTexture.create_from_image(img)
 
+func _apply_carry_item_texture() -> void:
+	if carry_item_texture == null:
+		_set_carry_item_type(carry_item_type)
+	if carry_item_texture != null:
+		texture_cache["ATTR3"] = carry_item_texture
+
+func _get_carry_item_texture(item_type: String) -> ImageTexture:
+	var resolved_type := item_type if CARRY_ITEM_RECTS.has(item_type) else "bush"
+	if carry_item_textures.has(resolved_type):
+		return carry_item_textures[resolved_type]
+	var sprites := _load_image("sprites.png")
+	if sprites == null:
+		return null
+	var src: Rect2i = CARRY_ITEM_RECTS[resolved_type]
+	var img := Image.create(src.size.x, src.size.y, false, sprites.get_format())
+	img.blit_rect(sprites, src, Vector2i.ZERO)
+	carry_item_textures[resolved_type] = ImageTexture.create_from_image(img)
+	return carry_item_textures[resolved_type]
+
+func _set_carry_item_type(item_type: String) -> void:
+	carry_item_type = item_type if CARRY_ITEM_RECTS.has(item_type) else "bush"
+	carry_item_texture = _get_carry_item_texture(carry_item_type)
+	if carry_item_texture != null:
+		texture_cache["ATTR3"] = carry_item_texture
+		return
+	texture_cache.erase("ATTR3")
+
 func _load_image(image_name: String) -> Image:
+	image_name = image_name.strip_edges()
+	if image_name.is_empty():
+		return null
 	var path := _find_resource_path(image_dir, image_name)
 	if path.is_empty():
 		path = _find_resource_path(resource_dir, image_name)
+	if path.is_empty():
+		push_warning("missing image: " + image_name)
+		return null
 	if path.begins_with("res://"):
 		var texture := load(path)
 		if texture is Texture2D:
@@ -546,9 +804,54 @@ func _draw() -> void:
 		_draw_status()
 		return
 
+	if hidden_object and not hidden_uses_gani:
+		_draw_hidden_bush()
+		return
 	var dir := 0 if current_gani.is_single_dir else direction
-	current_gani.draw(self, dir, current_frame, texture_cache, draw_offset)
+	current_gani.draw(self, dir, current_frame, texture_cache, draw_offset + _get_hidden_walk_offset())
+	_draw_lift_item()
 	_draw_shallow_water_overlay()
+	_draw_thrown_bushes()
+
+func _get_hidden_walk_offset() -> Vector2:
+	if not hidden_object or not is_moving:
+		return Vector2.ZERO
+	return HIDDEN_WALK_SHAKE[int(Time.get_ticks_msec() / HIDDEN_SHAKE_TIME) % HIDDEN_WALK_SHAKE.size()]
+
+func _draw_hidden_bush() -> void:
+	if carry_item_texture == null:
+		return
+	draw_texture_rect(carry_item_texture, Rect2(Vector2(-16, -20) + _get_hidden_walk_offset(), Vector2(32, 32)), false)
+
+func _draw_lift_item() -> void:
+	if active_action != "lift" or not carrying_object or carry_item_texture == null:
+		return
+	var progress := 1.0
+	if current_gani != null and current_gani.get_frame_count() > 1:
+		progress = clampf(float(current_frame) / float(current_gani.get_frame_count() - 1), 0.0, 1.0)
+	var facing := _direction_vector(action_direction)
+	var side := Vector2(-facing.y, facing.x)
+	var start := Vector2(-16, 18) + facing * 10.0
+	var end := Vector2(-16, -25) + side * 2.0
+	var pos := start.lerp(end, progress)
+	draw_texture_rect(carry_item_texture, Rect2(pos, Vector2(32, 32)), false)
+
+func _draw_thrown_bushes() -> void:
+	var level = _get_level()
+	if level == null or not "thrown_bushes" in level:
+		return
+	for thrown in level.thrown_bushes:
+		var item_texture := _get_carry_item_texture(str(thrown.get("type", "bush")))
+		if item_texture == null:
+			continue
+		var progress := clampf(float(thrown["age"]) / float(level.THROW_DURATION), 0.0, 1.0)
+		var world_pos := Vector2(thrown["start"]).lerp(Vector2(thrown["end"]), progress)
+		var local_pos := to_local(level.to_global(world_pos)).round()
+		var height := sin(progress * PI) * 28.0
+		var sprites = texture_cache.get("SPRITES")
+		if sprites != null:
+			draw_texture_rect_region(sprites, Rect2(local_pos + Vector2(-12, 3), Vector2(24, 12)), Rect2(Vector2.ZERO, Vector2(24, 12)))
+		draw_texture_rect(item_texture, Rect2(local_pos + Vector2(-16, -16 - height), Vector2(32, 32)), false)
 
 func _draw_shallow_water_overlay() -> void:
 	if _get_feet_tile_type() != 8:
@@ -578,15 +881,25 @@ func _play_frame_sounds(frame_index: int) -> void:
 	if not frame.has("sounds"):
 		return
 	for sound in frame.sounds:
-		var stream := _get_sound_stream(str(sound.get("file", "")))
-		if stream == null:
-			continue
-		var player := AudioStreamPlayer.new()
-		player.stream = stream
-		player.volume_db = -2.0
-		add_child(player)
-		player.play()
-		player.finished.connect(func(): player.queue_free())
+		_play_sound_file(_resolve_gani_value(str(sound.get("file", ""))))
+
+func _resolve_gani_value(value: String) -> String:
+	value = value.strip_edges()
+	var key := value.to_upper()
+	if current_gani != null and (key.begins_with("PARAM") or key.begins_with("ATTR")) and current_gani.default_images.has(key):
+		return str(current_gani.default_images[key])
+	return value
+
+func _play_sound_file(file_name: String, volume_db: float = -2.0) -> void:
+	var stream := _get_sound_stream(file_name)
+	if stream == null:
+		return
+	var player := AudioStreamPlayer.new()
+	player.stream = stream
+	player.volume_db = volume_db
+	add_child(player)
+	player.play()
+	player.finished.connect(func(): player.queue_free())
 
 func _get_sound_stream(file_name: String) -> AudioStream:
 	if file_name.is_empty():
