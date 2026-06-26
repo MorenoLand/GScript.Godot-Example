@@ -106,6 +106,7 @@ var velocity := Vector2.ZERO
 var active_action := ""
 var animation_cache: Dictionary = {}
 var sound_cache: Dictionary = {}
+var sound_players: Dictionary = {}
 var camera: Camera2D
 var carry_item_texture: ImageTexture
 var carry_item_textures: Dictionary = {}
@@ -408,7 +409,15 @@ func _update_action_state(_input: Vector2) -> void:
 	var space_down := Input.is_key_pressed(KEY_SPACE)
 	var weapon_down := Input.is_key_pressed(KEY_E)
 	var pickup_down := Input.is_key_pressed(KEY_F)
-	if active_action == "attack" or active_action == "lift":
+	if active_action == "attack":
+		if space_down and not space_was_down and current_frame >= 2:
+			_start_action("attack", attack_animation)
+			_try_slay_bush_ahead()
+		space_was_down = space_down
+		grab_was_down = weapon_down
+		pickup_was_down = pickup_down
+		return
+	if active_action == "lift":
 		space_was_down = space_down
 		grab_was_down = weapon_down
 		pickup_was_down = pickup_down
@@ -891,19 +900,25 @@ func _resolve_gani_value(value: String) -> String:
 	return value
 
 func _play_sound_file(file_name: String, volume_db: float = -2.0) -> void:
-	var stream := _get_sound_stream(file_name)
+	var sound_path := _get_sound_path(file_name)
+	if sound_path.is_empty():
+		return
+	var stream := _get_sound_stream(sound_path)
 	if stream == null:
 		return
-	var player := AudioStreamPlayer.new()
+	var player = sound_players.get(sound_path)
+	if player == null or not is_instance_valid(player):
+		player = AudioStreamPlayer.new()
+		add_child(player)
+		sound_players[sound_path] = player
+	player.stop()
 	player.stream = stream
 	player.volume_db = volume_db
-	add_child(player)
 	player.play()
-	player.finished.connect(func(): player.queue_free())
 
-func _get_sound_stream(file_name: String) -> AudioStream:
+func _get_sound_path(file_name: String) -> String:
 	if file_name.is_empty():
-		return null
+		return ""
 	var sound_path := _find_resource_path(sound_dir, file_name)
 	if sound_path.is_empty():
 		sound_path = _find_resource_path(resource_dir, file_name)
@@ -912,6 +927,9 @@ func _get_sound_stream(file_name: String) -> AudioStream:
 			sound_path = _find_resource_path(sound_dir, file_name.get_basename() + ext)
 			if not sound_path.is_empty():
 				break
+	return sound_path
+
+func _get_sound_stream(sound_path: String) -> AudioStream:
 	if sound_path.is_empty():
 		return null
 	if sound_cache.has(sound_path):
