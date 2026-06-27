@@ -111,6 +111,9 @@ var bush_leaps: Array = []
 var thrown_bushes: Array = []
 var bush_respawns: Array = []
 var signs: Array = []
+var level_links: Array = []
+var gmap_member_offsets: Dictionary = {}
+var current_gmap_path := ""
 var active_sign_text := ""
 var active_sign_time := 0.0
 var active_sign_page := 0
@@ -118,6 +121,10 @@ var sign_overlay: SignOverlay
 var sound_cache: Dictionary = {}
 var flower_time := 0.0
 var has_animated_flowers := false
+var level_menu_layer: CanvasLayer
+var level_menu_panel: PanelContainer
+var level_menu_list: ItemList
+var level_menu_paths: Array[String] = []
 
 func _enter_tree() -> void:
 	set_process(true)
@@ -137,8 +144,14 @@ func _ready() -> void:
 		add_child(layer)
 		layer.add_child(sign_overlay)
 		sign_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_build_level_warp_menu()
 	load_level()
 	set_process(true)
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F6:
+		_toggle_level_warp_menu()
+		get_viewport().set_input_as_handled()
 
 func _process(delta: float) -> void:
 	if Engine.is_editor_hint() and not editor_loaded:
@@ -191,6 +204,9 @@ func load_level() -> void:
 	level_size = LEVEL_SIZE
 	_clear_tiles(level_size)
 	signs.clear()
+	level_links.clear()
+	gmap_member_offsets.clear()
+	current_gmap_path = ""
 	tileset = load(tileset_path) as Texture2D
 	if level_path.get_extension().to_lower() == "gmap":
 		_load_gmap(level_path)
@@ -200,9 +216,90 @@ func load_level() -> void:
 	is_loading = false
 	queue_redraw()
 
+func _build_level_warp_menu() -> void:
+	level_menu_layer = CanvasLayer.new()
+	level_menu_layer.layer = 120
+	add_child(level_menu_layer)
+	level_menu_panel = PanelContainer.new()
+	level_menu_panel.visible = false
+	level_menu_panel.position = Vector2(16, 16)
+	level_menu_panel.custom_minimum_size = Vector2(360, 420)
+	level_menu_layer.add_child(level_menu_panel)
+	var box := VBoxContainer.new()
+	level_menu_panel.add_child(box)
+	var title := Label.new()
+	title.text = "Levels"
+	box.add_child(title)
+	level_menu_list = ItemList.new()
+	level_menu_list.custom_minimum_size = Vector2(340, 320)
+	level_menu_list.item_activated.connect(_warp_to_level_index)
+	box.add_child(level_menu_list)
+	var buttons := HBoxContainer.new()
+	box.add_child(buttons)
+	var warp := Button.new()
+	warp.text = "Warp"
+	warp.pressed.connect(_warp_to_selected_level)
+	buttons.add_child(warp)
+	var refresh := Button.new()
+	refresh.text = "Refresh"
+	refresh.pressed.connect(_refresh_level_warp_menu)
+	buttons.add_child(refresh)
+	var close := Button.new()
+	close.text = "Close"
+	close.pressed.connect(func(): level_menu_panel.visible = false)
+	buttons.add_child(close)
+	_refresh_level_warp_menu()
+
+func _toggle_level_warp_menu() -> void:
+	if level_menu_panel == null:
+		return
+	if not level_menu_panel.visible:
+		_refresh_level_warp_menu()
+	level_menu_panel.visible = not level_menu_panel.visible
+
+func _refresh_level_warp_menu() -> void:
+	level_menu_paths.clear()
+	_scan_level_dir("res://levels")
+	level_menu_paths.sort()
+	level_menu_list.clear()
+	for path in level_menu_paths:
+		level_menu_list.add_item(path.trim_prefix("res://levels/"))
+
+func _scan_level_dir(dir_path: String) -> void:
+	var dir := DirAccess.open(dir_path)
+	if dir == null:
+		return
+	dir.list_dir_begin()
+	while true:
+		var entry := dir.get_next()
+		if entry.is_empty():
+			break
+		if entry.begins_with("."):
+			continue
+		var path := dir_path.path_join(entry)
+		if dir.current_is_dir():
+			_scan_level_dir(path)
+		else:
+			var ext := entry.get_extension().to_lower()
+			if ext == "nw" or ext == "gmap":
+				level_menu_paths.append(path)
+	dir.list_dir_end()
+
+func _warp_to_selected_level() -> void:
+	var selected := level_menu_list.get_selected_items()
+	if selected.is_empty():
+		return
+	_warp_to_level_index(int(selected[0]))
+
+func _warp_to_level_index(index: int) -> void:
+	if index < 0 or index >= level_menu_paths.size():
+		return
+	level_menu_panel.visible = false
+	level_path = level_menu_paths[index]
+
 func is_world_blocking(world_pos: Vector2) -> bool:
 	var tile_type := get_world_tile_type(world_pos)
-	return tile_type == 22 or tile_type == 20
+	return tile_type == 22 or tile_type == 20 or tile_type == 21
 
 func has_grab_target(world_pos: Vector2) -> bool:
 	return is_world_blocking(world_pos) or not _find_lift_object_at_world(world_pos).is_empty()
@@ -224,8 +321,9 @@ func get_world_pixel_size() -> Vector2:
 func _draw() -> void:
 	if tileset == null:
 		return
-	for y in range(level_size.y):
-		for x in range(level_size.x):
+	var visible: Rect2i = _get_visible_tile_rect()
+	for y in range(visible.position.y, visible.end.y):
+		for x in range(visible.position.x, visible.end.x):
 			var tile_index := int(tiles[y][x])
 			if tile_index < 0:
 				continue
@@ -243,6 +341,17 @@ func _draw() -> void:
 				draw_set_transform_matrix(Transform2D())
 				draw_texture_rect_region(sprites_texture, Rect2(Vector2(leap.pos), src.size), src)
 		draw_set_transform_matrix(Transform2D())
+
+func _get_visible_tile_rect() -> Rect2i:
+	var inv: Transform2D = get_viewport().get_canvas_transform().affine_inverse()
+	var size: Vector2 = get_viewport_rect().size
+	var a: Vector2 = inv * Vector2.ZERO
+	var b: Vector2 = inv * size
+	var min_pos: Vector2 = Vector2(minf(a.x, b.x), minf(a.y, b.y)) - Vector2(TILE_SIZE, TILE_SIZE)
+	var max_pos: Vector2 = Vector2(maxf(a.x, b.x), maxf(a.y, b.y)) + Vector2(TILE_SIZE, TILE_SIZE)
+	var start: Vector2i = Vector2i(maxi(0, floori(min_pos.x / TILE_SIZE)), maxi(0, floori(min_pos.y / TILE_SIZE)))
+	var end: Vector2i = Vector2i(mini(level_size.x, ceili(max_pos.x / TILE_SIZE)), mini(level_size.y, ceili(max_pos.y / TILE_SIZE)))
+	return Rect2i(start, end - start)
 
 func _get_draw_tile_index(tile_index: int, cell: Vector2i) -> int:
 	if FLOWER_TILE_FRAMES.has(tile_index):
@@ -289,6 +398,41 @@ func show_sign_at_world(world_pos: Vector2) -> bool:
 				sign_overlay.queue_redraw()
 			return true
 	return false
+
+func try_level_link(world_pos: Vector2, input: Vector2, direction: int) -> Dictionary:
+	if input == Vector2.ZERO:
+		return {}
+	var probe := world_pos + Vector2(0, 8) + _direction_vector(direction) * 4.0
+	for link in level_links:
+		var rect: Rect2 = link["rect"]
+		if rect.has_point(probe):
+			return _activate_level_link(link, world_pos)
+	return {}
+
+func _activate_level_link(link: Dictionary, world_pos: Vector2) -> Dictionary:
+	var target := str(link["target"])
+	var target_key: String = target.get_file().to_lower()
+	var local_tile: Vector2 = world_pos / TILE_SIZE
+	var dest: Vector2 = Vector2(_resolve_link_coord(str(link["newx"]), local_tile.x), _resolve_link_coord(str(link["newy"]), local_tile.y))
+	if not current_gmap_path.is_empty() and gmap_member_offsets.has(target_key):
+		return {"position": (Vector2(gmap_member_offsets[target_key]) + dest) * TILE_SIZE}
+	var target_path: String = _resolve_level_asset(target)
+	level_path = target_path
+	return {"position": dest * TILE_SIZE}
+
+func _resolve_link_coord(value: String, player_value: float) -> float:
+	var lower := value.strip_edges().to_lower()
+	if lower == "playerx" or lower == "playery":
+		return player_value
+	return float(lower)
+
+func _direction_vector(dir: int) -> Vector2:
+	match dir:
+		0: return Vector2.UP
+		1: return Vector2.LEFT
+		2: return Vector2.DOWN
+		3: return Vector2.RIGHT
+	return Vector2.DOWN
 
 func is_sign_open() -> bool:
 	return not active_sign_text.is_empty()
@@ -540,6 +684,8 @@ func _load_nw(path: String, offset: Vector2i = Vector2i.ZERO, update_tileset: bo
 			_read_board_line(line, offset)
 		elif line.begins_with("SIGN "):
 			_read_sign_block(file, line, offset)
+		elif line.begins_with("LINK "):
+			_read_link_line(line, offset)
 
 func _read_sign_block(file: FileAccess, header: String, offset: Vector2i) -> void:
 	var parts := header.split(" ", false)
@@ -553,8 +699,21 @@ func _read_sign_block(file: FileAccess, header: String, offset: Vector2i) -> voi
 		lines.append(line)
 	signs.append({"pos": offset + Vector2i(int(parts[1]), int(parts[2])), "text": "\n".join(lines)})
 
+func _read_link_line(line: String, offset: Vector2i) -> void:
+	var parts := line.split(" ", false)
+	if parts.size() < 8:
+		return
+	var pos := offset + Vector2i(int(parts[2]), int(parts[3]))
+	level_links.append({
+		"target": parts[1],
+		"rect": Rect2(Vector2(pos) * TILE_SIZE, Vector2(float(parts[4]), float(parts[5])) * TILE_SIZE),
+		"newx": parts[6],
+		"newy": parts[7]
+	})
+
 func _load_gmap(path: String) -> void:
 	level_names.clear()
+	current_gmap_path = path
 	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null:
 		return
@@ -595,7 +754,9 @@ func _load_gmap(path: String) -> void:
 			if member_name.is_empty():
 				continue
 			var member_path := _resolve_level_asset(member_name)
-			_load_nw(member_path, Vector2i(cell_x * LEVEL_SIZE.x, cell_y * LEVEL_SIZE.y), false)
+			var offset := Vector2i(cell_x * LEVEL_SIZE.x, cell_y * LEVEL_SIZE.y)
+			gmap_member_offsets[member_name.get_file().to_lower()] = offset
+			_load_nw(member_path, offset, false)
 
 func _read_board_line(line: String, offset: Vector2i = Vector2i.ZERO) -> void:
 	var parts := line.split(" ", false)

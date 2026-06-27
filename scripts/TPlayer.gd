@@ -24,6 +24,14 @@ const HIDDEN_STEP_TIME := 0.16
 const HIDDEN_SHAKE_TIME := 150
 const CARRY_D := [Vector2(0, -2), Vector2(-2, 0), Vector2(0, 2), Vector2(2, 0)]
 const LIFT_DELTA := [0.0, 0.9, 1.5, 1.8, 2.0]
+const JUMP_SCALE := 16.0
+const JUMP_DELTA_Y_UP := [-0.2, 0.2, 0.5, 1.5, 2.8, 4.0, 5.4, 7.0]
+const JUMP_DELTA_Y_SIDE := [-0.2, -0.5, 0.0, 0.5, 1.1, 1.7, 2.3, 3.0]
+const JUMP_DELTA_X_SIDE := [1.0, 2.0, 3.0, 3.8, 4.5, 5.2, 5.8, 6.5]
+const JUMP_DELTA_Y_DOWN := [1.5, 2.7, 3.8, 4.5, 5.0, 5.2, 5.2, 5.0]
+const JUMP_LANDING_OFFSET := [Vector2(0.0, -5.0), Vector2(-6.5, 3.0), Vector2(0.0, 7.0), Vector2(6.5, 3.0)]
+const CLIFF_JUMP_TRIGGER_TICKS := 48
+const JUMP_FRAME_TIME := 0.055
 
 @export var resource_dir: String = "res://assets/ganis":
 	set(value):
@@ -128,6 +136,13 @@ var hidden_uses_gani := false
 var hidden_step_timer := 0.0
 var walk_step_timer := 0.0
 var sign_touch_timer := 0.0
+var link_touch_timer := 0.0
+var jump_frames := 0
+var jump_timer := 0.0
+var jump_start := Vector2.ZERO
+var jump_direction := 2
+var cliff_push_ticks := 0
+var cliff_push_direction := -1
 var action_direction := 2
 
 const CRGB = [
@@ -356,6 +371,8 @@ func _looks_like_image(value: String) -> bool:
 func _update_movement(delta: float) -> void:
 	var input := _get_move_input()
 	var level = _get_level()
+	if link_touch_timer > 0.0:
+		link_touch_timer = maxf(0.0, link_touch_timer - delta)
 	if level != null and level.has_method("is_sign_open") and level.is_sign_open():
 		var sign_action_down := input != Vector2.ZERO or Input.is_key_pressed(KEY_SPACE) or Input.is_key_pressed(KEY_E)
 		if sign_action_down and not sign_move_was_down and level.has_method("advance_sign"):
@@ -373,6 +390,12 @@ func _update_movement(delta: float) -> void:
 	sign_move_was_down = false
 	if input == Vector2.ZERO:
 		sign_reopen_lock = false
+	if active_action == "jump":
+		_animate_jump(delta)
+		_try_level_link(_direction_vector(jump_direction))
+		_update_hidden_steps(delta)
+		_update_walk_steps(delta)
+		return
 	_update_action_state(input)
 	var speed_scale := 1.0
 	var tile_type := _get_feet_tile_type()
@@ -406,8 +429,13 @@ func _update_movement(delta: float) -> void:
 	velocity = input.normalized() * move_speed * speed_scale
 	if input != Vector2.ZERO:
 		_update_direction(input)
+		if _update_cliff_jump(input):
+			return
+	else:
+		_reset_cliff_push()
 	if velocity != Vector2.ZERO:
 		_move_with_collision(velocity * delta)
+	_try_level_link(input)
 	_try_touch_sign(input)
 	var moving_now := input != Vector2.ZERO and active_action == ""
 	var wanted_animation := surface_animation
@@ -511,6 +539,85 @@ func _get_idle_animation() -> String:
 		return hidden_still_animation
 	return carry_still_animation if carrying_object else idle_animation
 
+func _reset_cliff_push() -> void:
+	cliff_push_ticks = 0
+	cliff_push_direction = -1
+
+func _update_cliff_jump(input: Vector2) -> bool:
+	if active_action != "":
+		_reset_cliff_push()
+		return false
+	var facing := _direction_vector(direction)
+	if input.normalized().dot(facing) < 0.75:
+		_reset_cliff_push()
+		return false
+	if not _can_jump_from_cliff():
+		_reset_cliff_push()
+		return false
+	if cliff_push_direction != direction:
+		cliff_push_direction = direction
+		cliff_push_ticks = 0
+	cliff_push_ticks += 1
+	if cliff_push_ticks < CLIFF_JUMP_TRIGGER_TICKS:
+		return false
+	_reset_cliff_push()
+	return _try_start_cliff_jump()
+
+func _can_jump_from_cliff() -> bool:
+	var level = _get_level()
+	if level == null or not level.has_method("get_world_tile_type") or not level.has_method("is_world_blocking"):
+		return false
+	var found_cliff := false
+	for point in _get_facing_action_points():
+		if int(level.get_world_tile_type(point)) == 21:
+			found_cliff = true
+			break
+	if not found_cliff:
+		return false
+	var landing_offset: Vector2 = JUMP_LANDING_OFFSET[direction]
+	return not level.is_world_blocking(position + landing_offset * JUMP_SCALE)
+
+func _try_start_cliff_jump() -> bool:
+	if not _can_jump_from_cliff():
+		return false
+	active_action = "jump"
+	action_direction = direction
+	jump_direction = direction
+	jump_start = position
+	jump_frames = 8
+	jump_timer = 0.0
+	is_moving = false
+	velocity = Vector2.ZERO
+	_play_sound_file("jump.wav")
+	return true
+
+func _animate_jump(delta: float) -> void:
+	if jump_frames <= 0:
+		active_action = ""
+		_set_animation_if_available(_get_idle_animation())
+		return
+	jump_timer += delta
+	if jump_timer < JUMP_FRAME_TIME:
+		return
+	jump_timer = 0.0
+	var index := clampi(8 - jump_frames, 0, 7)
+	var next_pos := jump_start
+	if jump_direction == 3:
+		next_pos.x += float(JUMP_DELTA_X_SIDE[index]) * JUMP_SCALE
+		next_pos.y += float(JUMP_DELTA_Y_SIDE[index]) * JUMP_SCALE
+	elif jump_direction == 2:
+		next_pos.y += float(JUMP_DELTA_Y_UP[index]) * JUMP_SCALE
+	elif jump_direction == 0:
+		next_pos.y -= float(JUMP_DELTA_Y_DOWN[index]) * JUMP_SCALE
+	elif jump_direction == 1:
+		next_pos.x -= float(JUMP_DELTA_X_SIDE[index]) * JUMP_SCALE
+		next_pos.y += float(JUMP_DELTA_Y_SIDE[index]) * JUMP_SCALE
+	position = next_pos
+	jump_frames -= 1
+	if jump_frames <= 0:
+		active_action = ""
+		_set_animation_if_available(_get_idle_animation())
+
 func _try_slay_bush_ahead() -> bool:
 	var level = _get_level()
 	if level == null or not level.has_method("try_slay_bush"):
@@ -549,6 +656,20 @@ func _try_touch_sign(input: Vector2) -> bool:
 			sign_reopen_lock = true
 			return true
 	return false
+
+func _try_level_link(input: Vector2) -> bool:
+	if link_touch_timer > 0.0:
+		return false
+	var level = _get_level()
+	if level == null or not level.has_method("try_level_link"):
+		return false
+	var result: Dictionary = level.try_level_link(position, input, direction)
+	if result.is_empty():
+		return false
+	position = Vector2(result["position"])
+	link_touch_timer = 0.35
+	_update_camera_limits()
+	return true
 
 func _try_show_sign_ahead() -> bool:
 	if direction != 0:
