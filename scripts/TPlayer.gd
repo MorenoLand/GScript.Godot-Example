@@ -5,19 +5,25 @@ extends Node2D
 const TGaniScript = preload("res://scripts/TGani.gd")
 const COLLISION_SHAPE_OFFSET := Vector2(-0.5, 12)
 const COLLISION_SHAPE_SIZE := Vector2(31, 30)
-const CORNER_SLIDE_OFFSETS := [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+const CORNER_SLIDE_PROBE := 9.0
+const CORNER_SLIDE_STEP := 1.0
+const CORNER_SLIDE_CHECKS := [1.0, 2.0, 3.0]
 const CARRY_ITEM_RECTS := {
 	"bush": Rect2i(0, 338, 32, 32),
 	"vase": Rect2i(64, 340, 32, 32),
 	"stone": Rect2i(96, 338, 32, 32),
-	"blackstone": Rect2i(96, 370, 32, 32)
+	"blackstone": Rect2i(96, 370, 32, 32),
+	"sign": Rect2i(32, 340, 32, 32)
 }
+const CARRY_ITEM_SOURCES := {}
 const HIDABLE_CARRY_TYPES := {"bush": true, "stone": true, "blackstone": true}
 const HIDDEN_WALK_SHAKE := [Vector2(0, 0), Vector2(1, -1), Vector2(0, 0), Vector2(-1, 1)]
 const HIDDEN_SPEED_SCALE := 0.55
 const WALK_STEP_TIME := 0.26
-const HIDDEN_STEP_TIME := 0.30
+const HIDDEN_STEP_TIME := 0.16
 const HIDDEN_SHAKE_TIME := 150
+const CARRY_D := [Vector2(0, -2), Vector2(-2, 0), Vector2(0, 2), Vector2(2, 0)]
+const LIFT_DELTA := [0.0, 0.9, 1.5, 1.8, 2.0]
 
 @export var resource_dir: String = "res://assets/ganis":
 	set(value):
@@ -114,11 +120,14 @@ var carry_item_type := "bush"
 var space_was_down := false
 var grab_was_down := false
 var pickup_was_down := false
+var sign_move_was_down := false
+var sign_reopen_lock := false
 var carrying_object := false
 var hidden_object := false
 var hidden_uses_gani := false
 var hidden_step_timer := 0.0
 var walk_step_timer := 0.0
+var sign_touch_timer := 0.0
 var action_direction := 2
 
 const CRGB = [
@@ -176,6 +185,8 @@ func _process(delta: float) -> void:
 	if Engine.is_editor_hint():
 		_process_preview(delta)
 		return
+	if sign_touch_timer > 0.0:
+		sign_touch_timer -= delta
 
 	if camera:
 		camera.zoom = camera.zoom.lerp(camera_zoom, min(1.0, 8.0 * delta))
@@ -191,6 +202,13 @@ func _process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if Engine.is_editor_hint() or not camera_enabled:
 		return
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		var level = _get_level()
+		if level != null and level.has_method("advance_sign") and level.has_method("is_sign_open") and level.is_sign_open():
+			level.advance_sign()
+			sign_reopen_lock = true
+			get_viewport().set_input_as_handled()
+			return
 	if event is InputEventKey and event.pressed and not event.echo and event.alt_pressed:
 		if event.keycode == KEY_8:
 			_set_camera_zoom(max(0.5, camera_zoom.x - 0.25))
@@ -337,6 +355,24 @@ func _looks_like_image(value: String) -> bool:
 
 func _update_movement(delta: float) -> void:
 	var input := _get_move_input()
+	var level = _get_level()
+	if level != null and level.has_method("is_sign_open") and level.is_sign_open():
+		var sign_action_down := input != Vector2.ZERO or Input.is_key_pressed(KEY_SPACE) or Input.is_key_pressed(KEY_E)
+		if sign_action_down and not sign_move_was_down and level.has_method("advance_sign"):
+			level.advance_sign()
+			sign_reopen_lock = true
+		sign_move_was_down = sign_action_down
+		active_action = ""
+		velocity = Vector2.ZERO
+		is_moving = false
+		space_was_down = Input.is_key_pressed(KEY_SPACE)
+		grab_was_down = Input.is_key_pressed(KEY_E)
+		pickup_was_down = Input.is_key_pressed(KEY_F)
+		_set_animation_if_available(_get_idle_animation())
+		return
+	sign_move_was_down = false
+	if input == Vector2.ZERO:
+		sign_reopen_lock = false
 	_update_action_state(input)
 	var speed_scale := 1.0
 	var tile_type := _get_feet_tile_type()
@@ -368,10 +404,11 @@ func _update_movement(delta: float) -> void:
 	if hidden_object:
 		speed_scale *= HIDDEN_SPEED_SCALE
 	velocity = input.normalized() * move_speed * speed_scale
-	if velocity != Vector2.ZERO:
-		_move_with_collision(velocity * delta)
 	if input != Vector2.ZERO:
 		_update_direction(input)
+	if velocity != Vector2.ZERO:
+		_move_with_collision(velocity * delta)
+	_try_touch_sign(input)
 	var moving_now := input != Vector2.ZERO and active_action == ""
 	var wanted_animation := surface_animation
 	if wanted_animation.is_empty():
@@ -446,6 +483,8 @@ func _update_action_state(_input: Vector2) -> void:
 	elif weapon_down and not grab_was_down:
 		if carrying_object and HIDABLE_CARRY_TYPES.has(carry_item_type):
 			_hide_with_bush()
+		elif _try_show_sign_ahead():
+			pass
 	elif pickup_down and not pickup_was_down:
 		if carrying_object:
 			_throw_carried_bush()
@@ -489,6 +528,38 @@ func _try_lift_item_ahead() -> bool:
 		var item_type := str(level.try_lift_bush(point))
 		if not item_type.is_empty():
 			_set_carry_item_type(item_type)
+			if item_type == "sign":
+				_play_sound_file("sign.wav")
+			return true
+	return false
+
+func _try_touch_sign(input: Vector2) -> bool:
+	if direction != 0 or sign_touch_timer > 0.0 or sign_reopen_lock or input == Vector2.ZERO:
+		return false
+	var level = _get_level()
+	if level == null or not level.has_method("show_sign_at_world"):
+		return false
+	var facing := _direction_vector(direction)
+	if input.normalized().dot(facing) < 0.75:
+		return false
+	for point in _get_sign_touch_points():
+		if level.show_sign_at_world(point):
+			sign_touch_timer = 0.4
+			sign_move_was_down = true
+			sign_reopen_lock = true
+			return true
+	return false
+
+func _try_show_sign_ahead() -> bool:
+	if direction != 0:
+		return false
+	var level = _get_level()
+	if level == null or not level.has_method("show_sign_at_world"):
+		return false
+	for point in _get_sign_touch_points():
+		if level.show_sign_at_world(point):
+			sign_move_was_down = true
+			sign_reopen_lock = true
 			return true
 	return false
 
@@ -509,7 +580,7 @@ func _hide_with_bush() -> void:
 	hidden_object = true
 	active_action = ""
 	hidden_uses_gani = _set_animation_if_available(hidden_still_animation)
-	_play_sound_file("crush.wav")
+	_put_hide_leaps()
 	queue_redraw()
 
 func _unhide_bush() -> void:
@@ -519,8 +590,16 @@ func _unhide_bush() -> void:
 	_set_carry_item_type(carry_item_type)
 	active_action = ""
 	_set_animation_if_available(carry_still_animation)
-	_play_sound_file("crush.wav")
+	_put_hide_leaps()
 	queue_redraw()
+
+func _put_hide_leaps() -> void:
+	var level = _get_level()
+	if level != null and level.has_method("_spawn_leaps") and level.has_method("_play_sound"):
+		level._spawn_leaps(position + Vector2(5, 0), "bush")
+		level._play_sound("crush.wav", "steps2.wav")
+		return
+	_play_sound_file("crush.wav")
 
 func _can_grab_ahead() -> bool:
 	var level = _get_level()
@@ -537,6 +616,12 @@ func _get_facing_action_points() -> Array[Vector2]:
 	var base := position + Vector2(0, 10) + facing * 22.0
 	return [base, base + side * 7.0, base - side * 7.0]
 
+func _get_sign_touch_points() -> Array[Vector2]:
+	var facing := _direction_vector(direction)
+	var side := Vector2(-facing.y, facing.x)
+	var base := position + Vector2(0, 12) + facing * 6.0
+	return [base, base + side * 5.0, base - side * 5.0]
+
 func _get_level():
 	var levels := get_tree().get_nodes_in_group("level")
 	return null if levels.is_empty() else levels[0]
@@ -547,18 +632,18 @@ func _move_with_collision(motion: Vector2) -> void:
 		var next := position + step
 		if _can_stand_at(next):
 			if _try_corner_slide(step, true, velocity):
-				return
+				next = position + step
 			position = next
-		elif not _try_corner_slide(step):
+		elif not _try_corner_slide(step, false, velocity):
 			velocity.x = 0.0
 	if motion.y != 0.0:
 		var step := Vector2(0.0, motion.y)
 		var next := position + step
 		if _can_stand_at(next):
 			if _try_corner_slide(step, true, velocity):
-				return
+				next = position + step
 			position = next
-		elif not _try_corner_slide(step):
+		elif not _try_corner_slide(step, false, velocity):
 			velocity.y = 0.0
 
 func _try_corner_slide(step: Vector2, proactive: bool = false, wanted: Vector2 = Vector2.ZERO) -> bool:
@@ -566,27 +651,25 @@ func _try_corner_slide(step: Vector2, proactive: bool = false, wanted: Vector2 =
 	if side == Vector2.ZERO:
 		return false
 	var step_dir: Vector2 = step.normalized()
-	var probe: Vector2 = step_dir * max(step.length() + 9.0, 9.0)
+	var probe: Vector2 = step_dir * CORNER_SLIDE_PROBE
 	if proactive and _can_stand_at(position + probe):
 		return false
-	var dirs: Array[float] = [-1.0, 1.0]
 	var side_dot: float = wanted.dot(side)
-	if proactive and abs(side_dot) < 0.01:
-		return false
+	var dirs: Array[float] = [-1.0, 1.0]
 	if side_dot > 0.0:
-		dirs = [1.0, -1.0]
-	for amount: float in CORNER_SLIDE_OFFSETS:
-		for dir: float in dirs:
-			var offset: Vector2 = side * amount * dir
-			if _can_stand_at(position + offset) and _can_stand_at(position + offset + step):
-				position += offset + step
+		dirs = [1.0]
+	elif side_dot < 0.0:
+		dirs = [-1.0]
+	for dir: float in dirs:
+		for amount: float in CORNER_SLIDE_CHECKS:
+			var test_offset: Vector2 = side * dir * amount
+			var nudge: Vector2 = side * dir * CORNER_SLIDE_STEP
+			var lookahead: Vector2 = step_dir * max(step.length(), 1.0)
+			if _can_stand_at(position + test_offset) and _can_stand_at(position + test_offset + lookahead):
+				position += nudge
 				return true
-			if proactive and _can_stand_at(position + offset) and _can_stand_at(position + offset + probe):
-				position += offset
-				return true
-			if _can_stand_at(position + offset) and _can_stand_at(position + offset + step_dir * (amount + step.length())):
-				position += offset
-				return true
+	if proactive:
+		return false
 	return false
 
 func _can_stand_at(pos: Vector2) -> bool:
@@ -728,7 +811,8 @@ func _get_carry_item_texture(item_type: String) -> ImageTexture:
 	var resolved_type := item_type if CARRY_ITEM_RECTS.has(item_type) else "bush"
 	if carry_item_textures.has(resolved_type):
 		return carry_item_textures[resolved_type]
-	var sprites := _load_image("sprites.png")
+	var source: String = str(CARRY_ITEM_SOURCES.get(resolved_type, "sprites.png"))
+	var sprites: Image = _load_image_from_path(source) if source.begins_with("res://") else _load_image(source)
 	if sprites == null:
 		return null
 	var src: Rect2i = CARRY_ITEM_RECTS[resolved_type]
@@ -754,6 +838,11 @@ func _load_image(image_name: String) -> Image:
 		path = _find_resource_path(resource_dir, image_name)
 	if path.is_empty():
 		push_warning("missing image: " + image_name)
+		return null
+	return _load_image_from_path(path)
+
+func _load_image_from_path(path: String) -> Image:
+	if path.is_empty():
 		return null
 	if path.begins_with("res://"):
 		var texture := load(path)
@@ -818,7 +907,8 @@ func _draw() -> void:
 		return
 	var dir := 0 if current_gani.is_single_dir else direction
 	current_gani.draw(self, dir, current_frame, texture_cache, draw_offset + _get_hidden_walk_offset())
-	_draw_lift_item()
+	if active_action == "lift":
+		_draw_lift_item()
 	_draw_shallow_water_overlay()
 	_draw_thrown_bushes()
 
@@ -835,15 +925,29 @@ func _draw_hidden_bush() -> void:
 func _draw_lift_item() -> void:
 	if active_action != "lift" or not carrying_object or carry_item_texture == null:
 		return
-	var progress := 1.0
-	if current_gani != null and current_gani.get_frame_count() > 1:
-		progress = clampf(float(current_frame) / float(current_gani.get_frame_count() - 1), 0.0, 1.0)
-	var facing := _direction_vector(action_direction)
-	var side := Vector2(-facing.y, facing.x)
-	var start := Vector2(-16, 18) + facing * 10.0
-	var end := Vector2(-16, -25) + side * 2.0
-	var pos := start.lerp(end, progress)
-	draw_texture_rect(carry_item_texture, Rect2(pos, Vector2(32, 32)), false)
+	var lift_frame := 4 - current_frame
+	if lift_frame < 0:
+		lift_frame = 0
+	if lift_frame > 4:
+		lift_frame = 4
+	var dir := clampi(action_direction, 0, 3)
+	var t := float(lift_frame) / 4.0
+	var from_pos := Vector2(-16, -4)
+	var to_pos := Vector2(-16, -30)
+	if dir == 1:
+		from_pos = Vector2(-31, -12)
+		to_pos = Vector2(-17, -31)
+	elif dir == 3:
+		from_pos = Vector2(-1, -12)
+		to_pos = Vector2(-15, -31)
+	elif dir == 0:
+		from_pos = Vector2(-16, -28)
+		to_pos = Vector2(-16, -34)
+	elif dir == 2:
+		from_pos = Vector2(-16, 0)
+		to_pos = Vector2(-16, -26)
+	var pos := from_pos.lerp(to_pos, t)
+	draw_texture_rect(carry_item_texture, Rect2(pos.round(), Vector2(32, 32)), false)
 
 func _draw_thrown_bushes() -> void:
 	var level = _get_level()
@@ -853,7 +957,7 @@ func _draw_thrown_bushes() -> void:
 		var item_texture := _get_carry_item_texture(str(thrown.get("type", "bush")))
 		if item_texture == null:
 			continue
-		var progress := clampf(float(thrown["age"]) / float(level.THROW_DURATION), 0.0, 1.0)
+		var progress := clampf(float(thrown["age"]) / float(thrown.get("duration", level.THROW_DURATION)), 0.0, 1.0)
 		var world_pos := Vector2(thrown["start"]).lerp(Vector2(thrown["end"]), progress)
 		var local_pos := to_local(level.to_global(world_pos)).round()
 		var height := sin(progress * PI) * 28.0

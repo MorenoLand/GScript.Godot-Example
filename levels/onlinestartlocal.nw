@@ -21,8 +21,8 @@ BOARD 0 18 64 0 ACADAAABf/f/f/f/f/f/f/f/f/f/AAABf/f/f/f/f/f/f/f/AAABf/f/AAABf/f/
 BOARD 0 19 64 0 ASATf/f/AQf/AAABf/KpKqf/f/f/f/f/f/f/AAABf/f/f/AAABf/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/AAABf/f/f/f/f/f//I/Jf/f/f/K5K6f/f/f/f/f/f/f/f/
 BOARD 0 20 64 0 f/f/f/f/f/f/f/AAABK5K6f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/ARBgARf/f/f/f/AAABf/f/
 BOARD 0 21 64 0 AAABf/f/f/f/f/f/ARBgARf/f/K3f/AAABf/f/f/f/f/f/f/f/f/f/f/f/f/AAABf/f/f/f/f/AAABf/f/f/f/f/OLf/f/f/f/f/f/f/f/AhBwAhARAQf/AAABf/f/AA
-BOARD 0 22 64 0 AQf/f/f/f/f/f/ARAhBwAhf/f/f/f/f/AAABf/f/f/f/AAABf/f/f/f/f/f/f/f/f/K3f/f/f/f/f/f/f/f/f/f/f/f/f/f/AAABf/f/f/f/KsKtAhARf/f/f/f/f/f/
-BOARD 0 23 64 0 f/f/f/AAABf/ARAhf/KsKtf/f/f/f/f/f/f/f/Knf/f/f/f/f/AAABf/f/f/f/f/f/f/f/f/f/f/f/f/Knf/f/f/f/f/f/AAABf/f/f/f/f/K8K9f/AgKpKqf/f/f/f/
+BOARD 0 22 64 0 AQf/f/f/f/f/f/ARAhBwAhf/f/f/f/f/AAABf/f/f/f/AAABf/f/f/f/f/f/f/IAIBK3f/f/f/f/f/f/f/f/f/f/f/f/f/f/AAABf/f/f/f/KsKtAhARf/f/f/f/f/f/
+BOARD 0 23 64 0 f/f/f/AAABf/ARAhf/KsKtf/f/f/f/f/f/f/f/Knf/f/f/f/f/AAABf/f/f/f/IQIRf/f/f/f/f/f/f/Knf/f/f/f/f/f/AAABf/f/f/f/f/K8K9f/AgKpKqf/f/f/f/
 BOARD 0 24 64 0 f/f/f/f/KpKqAgf/f/K8K9ABf/f/f/f/K4f/f/f/f/f/f/f/f/f/f/f/f/f/AAABf/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/f/AAABf/ARK5K6AAABf/f/
 BOARD 0 25 64 0 f/f/f/f/K5K6ARf/f/f/f/f/AwAxAwAxf/f/f/AwAxAwAxAwAxf/f/f/f/AwAxAwAxAwAxAAABf/AwAxAwAxAwAxf/f/f/AwAxf/f/f/f/f/f/f/f/Ahf/f/f/f/f/f/
 BOARD 0 26 64 0 f/f/f/f/f/f/Ahf/f/f/AwAxAwAxAwAxAwAxf/AwAxAwAxAwAxAwAxf/f/AwAxAwAxAwAxf/f/f/AwAxAwAxAwAxAAABf/AwAxf/f/Knf/f/f/f/f/AAABf/f/f/f/f/
@@ -63,5 +63,9 @@ BOARD 0 60 64 0 FDFEFCFCFCFCHlHmFCFCFCFCFCHVHWFCFCFCFCHVHWFCFCFCFCH6GOGOGOHIFCFC
 BOARD 0 61 64 0 FCFCFCFCFCFCFDFEFCFCFCFCFCHlHmFCFCFCFCHlHmFCFCFCFCFCFCFCFCFCFCFCFCFCFCFCFCFCHVHWFCFCFC4c484dFCFCHlHmFCFCFCFCFCFCFCFCFCHVHWFCFCHl
 BOARD 0 62 64 0 FCFCFCFSFCFC4c4848484dFCFCFCFCFSFCFCFDFEFCHVHWFCFCFDFEFCFCFCFCFCFCFCFCFCFCFSHlHmFCFC4c484848FCFCFCFDFEHVHWFCFCFSFCHVHWHlHmFCFCFS
 BOARD 0 63 64 0 FCHVHWFCFC4c4848484848484dFCFCFCFCFCFCFCFCHlHmFCFCFCFCFCFCFCFCFCFDFEFCFCFCFCFCFS4c48484848484dFCFCFCFCHlHmFCFCFCFCHlHmFDFEFCFCFC
+
+SIGN 31 23
+Welcome to Graal Godot example by Denveous
+SIGNEND
 
 TILESET pics1.png

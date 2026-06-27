@@ -2,6 +2,12 @@
 class_name TLevel
 extends Node2D
 
+class SignOverlay extends Control:
+	var level
+	func _draw() -> void:
+		if level != null:
+			level._draw_active_sign_to(self)
+
 const TILE_SIZE := 16
 const LEVEL_SIZE := Vector2i(64, 64)
 const TArraysScript = preload("res://scripts/TArrays.gd")
@@ -14,7 +20,8 @@ const LIFT_OBJECTS := [
 	{"type": "bush", "tiles": [3332, 3460, 3333, 3461], "replace": [1301, 1429, 1302, 1430]},
 	{"type": "vase", "tiles": [1308, 1436, 1309, 1437], "replace": [1850, 1978, 1851, 1979]},
 	{"type": "stone", "tiles": [258, 386, 259, 387], "replace": [2362, 2490, 2363, 2491]},
-	{"type": "blackstone", "tiles": [3742, 3870, 3743, 3871], "replace": [2362, 2490, 2363, 2491]}
+	{"type": "blackstone", "tiles": [3742, 3870, 3743, 3871], "replace": [2362, 2490, 2363, 2491]},
+	{"type": "sign", "tiles": [16, 144, 17, 145], "replace": [2106, 2234, 2107, 2235]}
 ]
 const LEAF_RECTS := [
 	Rect2(Vector2(35, 8), Vector2(9, 8)),
@@ -44,16 +51,23 @@ const LEAP_RECTS := {
 		Rect2(Vector2(72, 82), Vector2(16, 14)),
 		Rect2(Vector2(56, 96), Vector2(16, 14)),
 		Rect2(Vector2(72, 96), Vector2(16, 14))
+	],
+	"sign": [
+		Rect2(Vector2(56, 82), Vector2(16, 14)),
+		Rect2(Vector2(72, 82), Vector2(16, 14)),
+		Rect2(Vector2(56, 96), Vector2(16, 14)),
+		Rect2(Vector2(72, 96), Vector2(16, 14))
 	]
 }
 const CARRY_BUSH_SPRITE_RECT := Rect2(Vector2(0, 338), Vector2(32, 32))
 const FLOWER_TILE_FRAMES := {
-	128: [453, 454, 455, 454],
-	453: [453, 454, 455, 454],
-	454: [454, 455, 454, 453],
-	455: [455, 454, 453, 454]
+	128: [128, 453, 454, 455],
+	453: [128, 453, 454, 455],
+	454: [128, 453, 454, 455],
+	455: [128, 453, 454, 455]
 }
-const FLOWER_FRAME_TIME := 0.22
+const FLOWER_FRAME_TIME := 0.14
+const FLOWER_FRAME_VARIANCE := 0.018
 const THROW_FLY := [
 	Vector3(0.0, -0.8, -1.0),
 	Vector3(-1.0, 0.2, 0.0),
@@ -61,6 +75,10 @@ const THROW_FLY := [
 	Vector3(1.0, 0.2, 0.0)
 ]
 const THROW_DURATION := 0.5
+const SIGN_PCODE := "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!?-.,#>()#####\"####':/~&### <####;\n"
+const SIGN_WIDTHS := [6, 6, 6, 6, 6, 6, 6, 6, 3, 6, 6, 6, 7, 6, 6, 6, 6, 6, 6, 7, 6, 7, 7, 7, 7, 6, 6, 6, 6, 6, 6, 6, 6, 6, 3, 5, 6, 3, 7, 6, 6, 6, 6, 5, 6, 6, 6, 7, 7, 7, 7, 6, 6, 4, 6, 6, 6, 6, 6, 6, 3, 7, 6, 4, 4, 6, 6, 6, 6, 6, 6, 8, 8, 5, 7, 7, 7, 7, 4, 3, 7, 8, 7, 8, 8, 8, 4, 6, 8, 8, 8, 8, 6, 0, 0, 0]
+const SIGN_TEXT_ADVANCE := 1.78
+const SIGN_UPPER_TO_LOWER_EXTRA := 1.0
 
 @export_file("*.nw", "*.gmap") var level_path: String = "res://levels/onlinestartlocal.nw":
 	set(value):
@@ -88,13 +106,18 @@ var b64_table: Dictionary = {}
 var is_loading := false
 var editor_loaded := false
 var sprites_texture: Texture2D
+var letters_texture: Texture2D
 var bush_leaps: Array = []
 var thrown_bushes: Array = []
 var bush_respawns: Array = []
+var signs: Array = []
+var active_sign_text := ""
+var active_sign_time := 0.0
+var active_sign_page := 0
+var sign_overlay: SignOverlay
 var sound_cache: Dictionary = {}
 var flower_time := 0.0
-var flower_frame_time := 0.0
-var flower_frame := 0
+var has_animated_flowers := false
 
 func _enter_tree() -> void:
 	set_process(true)
@@ -104,6 +127,16 @@ func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_build_b64_table()
 	sprites_texture = load("res://assets/images/sprites.png") as Texture2D
+	letters_texture = load("res://assets/images/letters.png") as Texture2D
+	if sign_overlay == null:
+		sign_overlay = SignOverlay.new()
+		sign_overlay.level = self
+		sign_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var layer := CanvasLayer.new()
+		layer.layer = 100
+		add_child(layer)
+		layer.add_child(sign_overlay)
+		sign_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	load_level()
 	set_process(true)
 
@@ -113,10 +146,7 @@ func _process(delta: float) -> void:
 		_build_b64_table()
 		load_level()
 	flower_time += delta
-	flower_frame_time += delta
-	if flower_frame_time >= 0.05:
-		flower_frame_time = 0.0
-		flower_frame = (flower_frame + 1) % 4
+	if has_animated_flowers:
 		queue_redraw()
 	if not bush_leaps.is_empty():
 		for i in range(bush_leaps.size() - 1, -1, -1):
@@ -134,7 +164,7 @@ func _process(delta: float) -> void:
 		for i in range(thrown_bushes.size() - 1, -1, -1):
 			var thrown: Dictionary = thrown_bushes[i]
 			thrown["age"] = float(thrown["age"]) + delta
-			if float(thrown["age"]) >= THROW_DURATION:
+			if float(thrown["age"]) >= float(thrown.get("duration", THROW_DURATION)):
 				_land_thrown_bush(Vector2(thrown["end"]), str(thrown.get("type", "bush")))
 				thrown_bushes.remove_at(i)
 			else:
@@ -160,11 +190,13 @@ func load_level() -> void:
 	is_loading = true
 	level_size = LEVEL_SIZE
 	_clear_tiles(level_size)
+	signs.clear()
 	tileset = load(tileset_path) as Texture2D
 	if level_path.get_extension().to_lower() == "gmap":
 		_load_gmap(level_path)
 	elif not level_path.is_empty():
 		_load_nw(level_path)
+	_update_has_animated_flowers()
 	is_loading = false
 	queue_redraw()
 
@@ -203,18 +235,30 @@ func _draw() -> void:
 	if sprites_texture != null:
 		for leap in bush_leaps:
 			var src: Rect2 = leap.src
-			var xf := Transform2D(float(leap.rot), Vector2(leap.pos))
-			draw_set_transform_matrix(xf)
-			draw_texture_rect_region(sprites_texture, Rect2(src.size * -0.5, src.size), src)
+			if bool(leap.get("centered", true)):
+				var xf := Transform2D(float(leap.rot), Vector2(leap.pos))
+				draw_set_transform_matrix(xf)
+				draw_texture_rect_region(sprites_texture, Rect2(src.size * -0.5, src.size), src)
+			else:
+				draw_set_transform_matrix(Transform2D())
+				draw_texture_rect_region(sprites_texture, Rect2(Vector2(leap.pos), src.size), src)
 		draw_set_transform_matrix(Transform2D())
 
 func _get_draw_tile_index(tile_index: int, cell: Vector2i) -> int:
 	if FLOWER_TILE_FRAMES.has(tile_index):
 		var frames: Array = FLOWER_TILE_FRAMES[tile_index]
-		var frame_time := FLOWER_FRAME_TIME + float(posmod(cell.x * 17 + cell.y * 31, 7)) * 0.018
+		var frame_time := FLOWER_FRAME_TIME + float(posmod(cell.x * 17 + cell.y * 31, 7)) * FLOWER_FRAME_VARIANCE
 		var frame_offset := float(posmod(cell.x * 43 + cell.y * 19, 23)) * 0.037
 		return int(frames[int(floor((flower_time + frame_offset) / frame_time)) % frames.size()])
 	return tile_index
+
+func _update_has_animated_flowers() -> void:
+	has_animated_flowers = false
+	for row in tiles:
+		for tile_index in row:
+			if FLOWER_TILE_FRAMES.has(int(tile_index)):
+				has_animated_flowers = true
+				return
 
 func try_slay_bush(world_pos: Vector2) -> bool:
 	var match_data := _find_bush_at_world(world_pos)
@@ -233,12 +277,59 @@ func try_lift_bush(world_pos: Vector2) -> String:
 	queue_redraw()
 	return str(match_data.get("type", "bush"))
 
+func show_sign_at_world(world_pos: Vector2) -> bool:
+	for sign in signs:
+		var pos: Vector2i = sign["pos"]
+		var rect: Rect2 = Rect2(Vector2(pos) * TILE_SIZE, Vector2(32, 32))
+		if rect.has_point(world_pos):
+			active_sign_text = str(sign["text"])
+			active_sign_time = 4.0
+			active_sign_page = 0
+			if sign_overlay != null:
+				sign_overlay.queue_redraw()
+			return true
+	return false
+
+func is_sign_open() -> bool:
+	return not active_sign_text.is_empty()
+
+func advance_sign() -> void:
+	if active_sign_text.is_empty():
+		return
+	_play_sound("nextpage.wav")
+	var lines := active_sign_text.split("\n", false)
+	if active_sign_page + 3 >= lines.size():
+		active_sign_text = ""
+		active_sign_time = 0.0
+		active_sign_page = 0
+	else:
+		active_sign_page += 3
+	if sign_overlay != null:
+		sign_overlay.queue_redraw()
+
 func throw_bush(world_pos: Vector2, direction: int, item_type: String = "bush") -> void:
 	direction = clampi(direction, 0, 3)
 	var fly: Vector3 = THROW_FLY[direction]
-	var end := world_pos + Vector2(fly.x, fly.y) * TILE_SIZE * 9.0
-	thrown_bushes.append({"start": world_pos, "end": end, "age": 0.0, "type": item_type})
+	var end := _get_throw_end(world_pos, Vector2(fly.x, fly.y))
+	var travel: float = world_pos.distance_to(end) / (TILE_SIZE * 9.0)
+	travel = maxf(travel, 1.0 / 9.0)
+	thrown_bushes.append({"start": world_pos, "end": end, "age": 0.0, "duration": THROW_DURATION * travel, "type": item_type})
 	queue_redraw()
+
+func _get_throw_end(world_pos: Vector2, fly: Vector2) -> Vector2:
+	var end := world_pos
+	for i in range(9):
+		var next := end + fly * TILE_SIZE
+		if _is_throw_wall(next):
+			return next
+		end = next
+	return end
+
+func _is_throw_wall(world_pos: Vector2) -> bool:
+	var tile_type := get_world_tile_type(world_pos)
+	if tile_type == 20:
+		return false
+	return is_world_blocking(world_pos)
 
 func _land_thrown_bush(world_pos: Vector2, item_type: String = "bush") -> void:
 	if get_world_tile_type(world_pos) == 11:
@@ -324,21 +415,23 @@ func _spawn_leaps(center: Vector2, item_type: String = "bush") -> void:
 			"age": 0.0,
 			"life": randf_range(0.24, 0.36),
 			"rot": randf_range(-PI, PI),
-			"spin": randf_range(-6.0, 6.0)
+			"spin": randf_range(-6.0, 6.0),
+			"centered": true
 		})
 
 func _spawn_break_leaps(center: Vector2, rects: Array) -> void:
-	var offsets := [Vector2(-4, -4), Vector2(4, -4), Vector2(-4, 4), Vector2(4, 4)]
-	var velocities := [Vector2(-70, -105), Vector2(70, -105), Vector2(-70, -65), Vector2(70, -65)]
+	var offsets := [Vector2(-16, -16), Vector2(0, -16), Vector2(-16, 0), Vector2(0, 0)]
+	var velocities := [Vector2(-92, -82), Vector2(92, -82), Vector2(-82, 76), Vector2(82, 76)]
 	for i in range(min(rects.size(), 4)):
 		bush_leaps.append({
 			"pos": center + offsets[i],
 			"vel": velocities[i],
 			"src": rects[i],
 			"age": 0.0,
-			"life": 0.42,
+			"life": 0.32,
 			"rot": 0.0,
-			"spin": 0.0
+			"spin": 0.0,
+			"centered": false
 		})
 
 func _play_sound(primary_name: String, fallback_name: String = "") -> void:
@@ -367,6 +460,63 @@ func _get_sound_stream(file_name: String) -> AudioStream:
 		sound_cache[path] = stream
 	return stream
 
+func _draw_active_sign_to(target: CanvasItem) -> void:
+	if active_sign_text.is_empty() or letters_texture == null:
+		return
+	var lines := active_sign_text.split("\n", false)
+	var sign_width := 24
+	var sign_x := int((get_viewport_rect().size.x - float(sign_width * 16)) * 0.5)
+	var sign_y := int(get_viewport_rect().size.y) - 150
+	_draw_sign_back(target, sign_x, sign_y, sign_width, 9)
+	for i in range(active_sign_page, min(lines.size(), active_sign_page + 3)):
+		_draw_sign_line(target, str(lines[i]), sign_x + 16.0, sign_y + 18.0 + float((i - active_sign_page) * 32))
+
+func _draw_sign_back(target: CanvasItem, x: int, y: int, width: int, height: int) -> void:
+	var right_x := x + (width - 1) * 16
+	var bottom_y := y + (height - 2) * 16
+	var fill := Color8(255, 247, 206, 255)
+	target.draw_rect(Rect2(Vector2(x + 16, y + 24), Vector2((width - 2) * 16, bottom_y - y - 24)), fill, true)
+	target.draw_rect(Rect2(Vector2(x + 24, y + 16), Vector2((width - 3) * 16, 8)), fill, true)
+	for column in range(1, width - 1):
+		_draw_sign_glyph(target, 0x64, x + column * 16, y)
+		_draw_sign_glyph(target, 0x65, x + column * 16, bottom_y)
+	for row in range(1, int((height - 3) / 2) + 1):
+		_draw_sign_glyph(target, 0x66, x, y + row * 32)
+		_draw_sign_glyph(target, 0x67, right_x, y + row * 32)
+	_draw_sign_glyph(target, 0x60, x, y)
+	_draw_sign_glyph(target, 0x61, right_x, y)
+	_draw_sign_glyph(target, 0x62, x, bottom_y)
+	_draw_sign_glyph(target, 0x63, right_x, bottom_y)
+
+func _measure_sign_line(text: String) -> float:
+	var width := 0.0
+	for i in range(text.length()):
+		var chr := text.substr(i, 1)
+		var index := SIGN_PCODE.find(chr)
+		if index >= 0 and index < SIGN_WIDTHS.size():
+			var next_chr := text.substr(i + 1, 1) if i + 1 < text.length() else ""
+			width += _get_sign_advance(index, chr, next_chr)
+	return width
+
+func _draw_sign_line(target: CanvasItem, text: String, x: float, y: float) -> void:
+	for i in range(text.length()):
+		var chr := text.substr(i, 1)
+		var index := SIGN_PCODE.find(chr)
+		if index < 0:
+			continue
+		_draw_sign_glyph(target, index, x, y)
+		var next_chr := text.substr(i + 1, 1) if i + 1 < text.length() else ""
+		x += _get_sign_advance(index, chr, next_chr)
+
+func _get_sign_advance(index: int, chr: String, next_chr: String) -> float:
+	var advance := float(SIGN_WIDTHS[index]) * SIGN_TEXT_ADVANCE
+	if chr >= "A" and chr <= "Z" and next_chr >= "a" and next_chr <= "z":
+		advance += SIGN_UPPER_TO_LOWER_EXTRA
+	return advance
+
+func _draw_sign_glyph(target: CanvasItem, index: int, x: float, y: float) -> void:
+	target.draw_texture_rect_region(letters_texture, Rect2(Vector2(x, y), Vector2(16, 32)), Rect2(Vector2((index % 16) * 16, int(index / 16) * 32), Vector2(16, 32)))
+
 func _clear_tiles(size: Vector2i) -> void:
 	tiles.clear()
 	for y in range(size.y):
@@ -388,6 +538,20 @@ func _load_nw(path: String, offset: Vector2i = Vector2i.ZERO, update_tileset: bo
 				tileset = load(tileset_path) as Texture2D
 		elif line.begins_with("BOARD "):
 			_read_board_line(line, offset)
+		elif line.begins_with("SIGN "):
+			_read_sign_block(file, line, offset)
+
+func _read_sign_block(file: FileAccess, header: String, offset: Vector2i) -> void:
+	var parts := header.split(" ", false)
+	if parts.size() < 3:
+		return
+	var lines: Array[String] = []
+	while not file.eof_reached():
+		var line := file.get_line()
+		if line == "SIGNEND":
+			break
+		lines.append(line)
+	signs.append({"pos": offset + Vector2i(int(parts[1]), int(parts[2])), "text": "\n".join(lines)})
 
 func _load_gmap(path: String) -> void:
 	level_names.clear()

@@ -11,8 +11,6 @@ size = Vector2(31, 30)
 [node name="TLevel" type="Node2D" parent="." unique_id=863337196]
 texture_filter = 1
 script = ExtResource("2_tlevel")
-sound_dir = null
-bush_land_sound = null
 
 [node name="TPlayer" type="Node2D" parent="." unique_id=1600960476]
 texture_filter = 1
@@ -20,6 +18,5 @@ position = Vector2(513, 484)
 script = ExtResource("1_tplayer")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="TPlayer" unique_id=1460698387]
-visible = false
 position = Vector2(-0.5, 12)
 shape = SubResource("RectangleShape2D_player")

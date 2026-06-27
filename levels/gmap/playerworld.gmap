@@ -1,0 +1,8 @@
+GRMAP001
+WIDTH 3
+HEIGHT 3
+LEVELNAMES
+"playerworld_aa-aa.nw","playerworld_00-aa.nw","playerworld_01-aa.nw"
+"playerworld_aa-00.nw","playerworld_00-00.nw","playerworld_01-00.nw"
+"playerworld_aa-01.nw","playerworld_00-01.nw","playerworld_01-01.nw"
+LEVELNAMESEND
